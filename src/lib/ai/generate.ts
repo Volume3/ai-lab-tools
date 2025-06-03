@@ -4,8 +4,7 @@ import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 
 const openai = new OpenAI({
-  // apiKey: process.env.GEMINI_API_KEY,
-  apiKey: 'AIzaSyCHToS2eWXw4nq_XDau1Ddt8AmFv4OJfe0',
+  apiKey: process.env.GEMINI_API_KEY,
   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
 });
 
