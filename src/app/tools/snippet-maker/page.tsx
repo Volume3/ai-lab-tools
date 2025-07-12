@@ -3,7 +3,12 @@
 import React, { useState } from 'react';
 import { Input, Button, Typography, Card, Space, message } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
-import { useMock, mockResponse } from '@/lib/mocks/snippet';
+import { useMock, mockResponse, markdownContent, markdownContent1 } from '@/lib/mocks/snippet';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { solarizedlight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import ChatMarkdown from '@/components/ChatMarkdown';
 
 const { TextArea } = Input;
 const { Paragraph } = Typography;
@@ -11,7 +16,7 @@ const { Paragraph } = Typography;
 export default function SnippetMakerPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState('test');
+  const [result, setResult] = useState(markdownContent1);
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
@@ -22,31 +27,28 @@ export default function SnippetMakerPage() {
         await new Promise((res) => setTimeout(res, 800));
         setResult(mockResponse);
       } else {
-        // 这里写你实际调用 Gemini 接口的逻辑
         const res = await fetch('/api/snippet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: input || '一个包含姓名和年龄的表单' }),
         });
-        console.log(res, 'res');
+
         if (!res.ok) {
           let errorMsg = '接口请求失败';
           try {
             const errorData = await res.json();
-            if (errorData && errorData.message) {
-              errorMsg = errorData.message;
-            }
+            if (errorData?.message) errorMsg = errorData.message;
           } catch {}
           setError(errorMsg);
           setResult('');
           return;
         }
+
         const data = await res.json();
-        console.log(data, 'data');
         setResult(data.result);
       }
     } catch (err) {
-      console.log(err, 'handleGenerate');
+      console.error(err, 'handleGenerate');
       setError('生成失败');
       setResult('');
     } finally {
@@ -60,7 +62,11 @@ export default function SnippetMakerPage() {
   };
 
   return (
-    <Card title="代码片段生成器" style={{ maxWidth: 800, margin: '40px auto' }}>
+    <Card
+      title="代码片段生成器"
+      style={{ maxWidth: 800, margin: '40px auto' }}
+      // className={styles.markdownBody}
+    >
       <Space direction="vertical" style={{ width: '100%' }}>
         <TextArea
           rows={4}
@@ -76,15 +82,47 @@ export default function SnippetMakerPage() {
           <Card
             type="inner"
             title="生成结果"
+            // className="prose max-w-none prose-pre:mt-4 prose-p:mt-4"
             extra={
               <Button icon={<CopyOutlined />} onClick={handleCopy}>
                 复制
               </Button>
             }
           >
-            <Paragraph code style={{ whiteSpace: 'pre-wrap' }}>
-              {result}
-            </Paragraph>
+            <ChatMarkdown content={result} />
+            {/* <ReactMarkdown
+              children={result}
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline ? (
+                    <SyntaxHighlighter
+                      style={solarizedlight}
+                      language={match ? match[1] : 'tsx'}
+                      PreTag="div"
+                      wrapLongLines
+                      customStyle={{ margin: 0, borderRadius: 4 }}
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  ) : (
+                    <code
+                      style={{
+                        background: '#eee',
+                        borderRadius: 3,
+                        padding: '0 4px',
+                        fontSize: '95%',
+                      }}
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            /> */}
           </Card>
         )}
 
@@ -94,6 +132,7 @@ export default function SnippetMakerPage() {
           </Card>
         )}
       </Space>
+      <p className="text-red-500 text-xl">Tailwind生效了吗？</p>
     </Card>
   );
 }
