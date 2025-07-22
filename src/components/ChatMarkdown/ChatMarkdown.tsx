@@ -30,6 +30,7 @@ function hasBlockChild(children: ReactNode[]): boolean {
 }
 
 export default function ChatMarkdown({ content, className }: ChatMarkdownProps) {
+  // console.log(content, 'content');
   return (
     <div className={className}>
       <ReactMarkdown
@@ -44,7 +45,7 @@ export default function ChatMarkdown({ content, className }: ChatMarkdownProps) 
           },
           code({ node, inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
-            console.log('Inline:', inline, 'Content:', children);
+            // console.log('Inline:', inline, 'Content:', children);
             return !inline ? (
               <SyntaxHighlighter
                 style={solarizedlight}

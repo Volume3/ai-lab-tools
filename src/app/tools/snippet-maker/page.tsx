@@ -1,52 +1,81 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Input, Button, Typography, Card, Space, message } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
-import { useMock, mockResponse, markdownContent, markdownContent1 } from '@/lib/mocks/snippet';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { solarizedlight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import ChatMarkdown from '@/components/ChatMarkdown';
+import React, { useState, useEffect } from 'react';
+import { Tabs, ConfigProvider, theme as antTheme } from 'antd';
+import { PromptInput, CodeDisplay, SettingsPanel } from '@/components/CodeStudio';
+import type { HistoryItem } from '@/components/CodeStudio';
+import { GenerationOptions } from '@/types/codeStudio';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
-const { TextArea } = Input;
-const { Paragraph } = Typography;
-
-export default function SnippetMakerPage() {
-  const [input, setInput] = useState('');
+export default function CodeStudioPage() {
+  // 基础状态管理
+  const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(markdownContent1);
+  const [result, setResult] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const handleGenerate = async () => {
+  // 使用本地存储钩子管理选项和历史记录
+  const [options, setOptions] = useLocalStorage<GenerationOptions>('code-studio-options', {
+    provider: 'gemini',
+    model: 'gemini-2.0-flash',
+    temperature: 0.7,
+    language: 'zh',
+    framework: 'react',
+    cssFramework: 'tailwind',
+    level: 'basic',
+    theme: 'light',
+    showLineNumbers: true,
+  });
+
+  const [history, setHistory] = useLocalStorage<HistoryItem[]>('code-history', []);
+
+  // 主题状态
+  const [darkMode, setDarkMode] = useState(options.theme === 'dark');
+
+  // 更新主题
+  useEffect(() => {
+    setDarkMode(options.theme === 'dark');
+  }, [options.theme]);
+
+  // 提交表单，生成代码
+  const handleGenerate = async (promptText: string, genOptions: GenerationOptions) => {
     setLoading(true);
     setError(null);
+
     try {
-      if (useMock) {
-        await new Promise((res) => setTimeout(res, 800));
-        setResult(mockResponse);
-      } else {
-        const res = await fetch('/api/snippet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: input || '一个包含姓名和年龄的表单' }),
-        });
+      const res = await fetch('/api/snippet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: promptText,
+          ...genOptions,
+          stream: false, // 先使用非流式API，后续添加流式支持
+        }),
+      });
 
-        if (!res.ok) {
-          let errorMsg = '接口请求失败';
-          try {
-            const errorData = await res.json();
-            if (errorData?.message) errorMsg = errorData.message;
-          } catch {}
-          setError(errorMsg);
-          setResult('');
-          return;
-        }
-
-        const data = await res.json();
-        setResult(data.result);
+      if (!res.ok) {
+        let errorMsg = '接口请求失败';
+        try {
+          const errorData = await res.json();
+          if (errorData?.error) errorMsg = errorData.error;
+        } catch {}
+        setError(errorMsg);
+        setResult('');
+        return;
       }
+
+      const data = await res.json();
+      setResult(data.result);
+
+      // 添加到历史记录
+      const newHistoryItem: HistoryItem = {
+        prompt: promptText,
+        result: data.result,
+        timestamp: Date.now(),
+        options: { ...genOptions },
+      };
+
+      setHistory([newHistoryItem, ...history.slice(0, 19)]);
     } catch (err) {
       console.error(err, 'handleGenerate');
       setError('生成失败');
@@ -56,83 +85,100 @@ export default function SnippetMakerPage() {
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(result);
-    message.success('已复制到剪贴板');
+  // 处理历史记录项选择
+  const handleHistorySelect = (item: HistoryItem) => {
+    setPrompt(item.prompt);
+    setResult(item.result);
+    setOptions(item.options);
   };
 
   return (
-    <Card
-      title="代码片段生成器"
-      style={{ maxWidth: 800, margin: '40px auto' }}
-      // className={styles.markdownBody}
+    <ConfigProvider
+      theme={{
+        algorithm: darkMode ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+      }}
     >
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <TextArea
-          rows={4}
-          placeholder="请输入你想生成的代码描述，比如：一个包含姓名和年龄的表单"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <Button type="primary" onClick={handleGenerate} loading={loading}>
-          生成代码
-        </Button>
+      <div className="container mx-auto p-4">
+        <header className="mb-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">代码工作室</h1>
+        </header>
 
-        {result && (
-          <Card
-            type="inner"
-            title="生成结果"
-            // className="prose max-w-none prose-pre:mt-4 prose-p:mt-4"
-            extra={
-              <Button icon={<CopyOutlined />} onClick={handleCopy}>
-                复制
-              </Button>
-            }
-          >
-            <ChatMarkdown content={result} />
-            {/* <ReactMarkdown
-              children={result}
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ node, inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  return !inline ? (
-                    <SyntaxHighlighter
-                      style={solarizedlight}
-                      language={match ? match[1] : 'tsx'}
-                      PreTag="div"
-                      wrapLongLines
-                      customStyle={{ margin: 0, borderRadius: 4 }}
-                      {...props}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
+        <Tabs
+          defaultActiveKey="editor"
+          items={[
+            {
+              key: 'editor',
+              label: '代码生成',
+              children: (
+                <div className="space-y-4">
+                  <PromptInput
+                    initialValue={prompt}
+                    onChange={setPrompt}
+                    onSubmit={handleGenerate}
+                    onHistorySelect={handleHistorySelect}
+                    options={options}
+                    onOptionsChange={setOptions}
+                  />
+
+                  {error && (
+                    <div className="p-4 border border-red-300 rounded bg-red-50 text-red-700">
+                      {error}
+                    </div>
+                  )}
+
+                  {result && (
+                    <CodeDisplay
+                      code={result}
+                      theme={darkMode ? 'dark' : 'light'}
+                      showLineNumbers={options.showLineNumbers}
+                    />
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'history',
+              label: '历史记录',
+              children: (
+                <div className="space-y-4">
+                  {history.length === 0 ? (
+                    <div className="text-center text-gray-500 py-8">暂无历史记录</div>
                   ) : (
-                    <code
-                      style={{
-                        background: '#eee',
-                        borderRadius: 3,
-                        padding: '0 4px',
-                        fontSize: '95%',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
-              }}
-            /> */}
-          </Card>
-        )}
-
-        {error && (
-          <Card type="inner" title="错误" style={{ borderColor: 'red', color: 'red' }}>
-            <Paragraph>{error}</Paragraph>
-          </Card>
-        )}
-      </Space>
-      <p className="text-red-500 text-xl">Tailwind生效了吗？</p>
-    </Card>
+                    history.map((item, index) => (
+                      <div
+                        key={index}
+                        className="border rounded p-4 cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleHistorySelect(item)}
+                      >
+                        <div className="flex justify-between mb-2">
+                          <div className="font-medium truncate max-w-lg">{item.prompt}</div>
+                          <div className="text-sm text-gray-500">
+                            {new Date(item.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="bg-gray-100 p-2 rounded text-xs truncate">
+                          {item.result.substring(0, 100)}...
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'settings',
+              label: '设置',
+              children: (
+                <SettingsPanel
+                  options={options}
+                  onChange={setOptions}
+                  theme={darkMode ? 'dark' : 'light'}
+                />
+              ),
+            },
+          ]}
+        />
+      </div>
+    </ConfigProvider>
   );
 }
